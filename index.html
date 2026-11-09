@@ -1,0 +1,119 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6f2">
+  <title>Score Lookup</title>
+  <style>
+    :root { color-scheme: light; --ink:#18352e; --muted:#64756e; --green:#24664f; --line:#dce5de; --paper:#fff; --bg:#f4f6f2; --gold:#e7bd72; }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; padding:32px 18px; display:grid; place-items:center; background:radial-gradient(ellipse at 15% 5%,#e7eee5 0,transparent 35%),var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif }
+    main { width:min(100%,520px) }
+    .card { background:var(--paper); border:1px solid var(--line); border-radius:24px; padding:clamp(24px,7vw,44px); box-shadow:0 18px 55px #18352e12 }
+    .eyebrow { display:flex; align-items:center; gap:9px; color:var(--green); font-size:.76rem; font-weight:750; letter-spacing:.13em; text-transform:uppercase }
+    .dot { width:9px; height:9px; border-radius:50%; background:var(--gold) }
+    h1 { margin:14px 0 8px; font-family:Georgia,"Times New Roman",serif; font-size:clamp(2.2rem,8vw,3.2rem); font-weight:500; letter-spacing:-.045em; line-height:1.06 }
+    .intro { margin:0 0 28px; color:var(--muted) }
+    label { display:block; margin:0 0 7px; font-size:.9rem; font-weight:700 }
+    input { display:block; width:100%; height:50px; padding:0 14px; border:1px solid #cbd8cf; border-radius:11px; background:#fff; color:var(--ink); font:inherit; outline:none }
+    input:focus { border-color:var(--green); box-shadow:0 0 0 3px #24664f20 }
+    .field + .field { margin-top:17px }
+    .hint { margin:7px 0 0; color:var(--muted); font-size:.85rem }
+    button { width:100%; min-height:51px; margin-top:22px; border:0; border-radius:11px; background:var(--green); color:white; font:inherit; font-weight:700; cursor:pointer; transition:background .15s,transform .15s }
+    button:hover { background:#1b513e; transform:translateY(-1px) }
+    button:focus-visible { outline:3px solid #87b69c; outline-offset:3px }
+    .message { margin-top:18px; padding:15px 16px; border-radius:12px; background:#eff5f0; color:var(--ink) }
+    .message.error { background:#fff2ed; color:#823c2c }
+    .message[hidden], [hidden] { display:none }
+    .score { display:block; margin-top:3px; font-family:Georgia,"Times New Roman",serif; font-size:2.8rem; line-height:1.15 }
+    .result-name { color:var(--muted); font-size:.92rem }
+    .privacy { margin:19px 3px 0; color:var(--muted); text-align:center; font-size:.8rem }
+    @media(max-width:420px) { body { padding:16px 12px } .card { border-radius:19px } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card" aria-labelledby="title">
+      <div class="eyebrow"><span class="dot" aria-hidden="true"></span> Student score portal</div>
+      <h1 id="title">Retrieve your score</h1>
+      <p class="intro">Enter your last name below to look up your result.</p>
+      <form id="lookup-form" novalidate>
+        <div class="field">
+          <label for="surname">Last name</label>
+          <input id="surname" name="surname" autocomplete="family-name" required>
+        </div>
+        <div class="field" id="initial-field" hidden>
+          <label for="initial">First name initial</label>
+          <input id="initial" name="initial" maxlength="1" autocomplete="off" aria-describedby="initial-hint">
+          <p class="hint" id="initial-hint">There is more than one student with that last name. Enter your first name initial to find the right score.</p>
+        </div>
+        <button type="submit">Find my score</button>
+      </form>
+      <div id="result" class="message" role="status" aria-live="polite" hidden></div>
+    </section>
+    <p class="privacy">Your score appears only after you enter your last name.</p>
+  </main>
+  <script>
+    // Scores are stored by surname; initials distinguish students with shared surnames.
+    const records = [
+      ["Mandap",85],["Ocampo Y.",84],["Viray",88],["Baleza",77],["Miranda O.",75],["Patawaran",83],["Cunanan A.",86],["Flores M.",89],["Punu",77],["Cunanan C.",79],["Calma",75],["Andaya",83],["Paual",95],["Marimla",66],["Libao",49],["Bautista",51],["Miranda J.",41],["Borlaza",58],["Saez",55],["Aquino",32],["Yee",57],["Lacson",68],["Ilagan",60],["Flores R.",46],["Sumang",55],["Razon",50],["Santos A.",62],["David",58],["Alba",50],["Soliman",63],["Olalia",73],["Tiamzon",61],["Miranda L.",74],["Lulu",62],["Rivera",57],["Canlapan",51],["Santos J.",46],["Libiran",58],["Gueco",61],["Iscat",62],["Mendoza",62],["Pangilinan",62],["Magsilang",72],["Manabat",70],["Ocampo V.",44],["Ramos",74],["Dela Cruz",65],["Gonzales",72],["Balatbat",72],["Gamboa",63],["Macabanti",66],["Torres",62]
+    ].map(([fullName, score]) => {
+      const match = fullName.match(/^(.*?)(?:\s+([A-Z])\.)?$/);
+      return { surname: match[1].trim(), initial: match[2] || "", score };
+    });
+
+    const form = document.querySelector("#lookup-form");
+    const surnameInput = document.querySelector("#surname");
+    const initialField = document.querySelector("#initial-field");
+    const initialInput = document.querySelector("#initial");
+    const result = document.querySelector("#result");
+    const clean = value => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+
+    surnameInput.addEventListener("input", () => {
+      initialField.hidden = false;
+      const matches = records.filter(record => clean(record.surname) === clean(surnameInput.value));
+      const needsInitial = matches.length > 1;
+      initialField.hidden = !needsInitial;
+      initialInput.required = needsInitial;
+      if (!needsInitial) initialInput.value = "";
+    });
+
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const surname = clean(surnameInput.value);
+      const matches = records.filter(record => clean(record.surname) === surname);
+      result.hidden = false;
+      result.className = "message";
+      if (!surname) {
+        showError("Please enter your last name.");
+        surnameInput.focus();
+        return;
+      }
+      if (matches.length > 1 && !initialInput.value.trim()) {
+        initialField.hidden = false;
+        initialInput.required = true;
+        showError("This last name is shared. Please enter your first name initial.");
+        initialInput.focus();
+        return;
+      }
+      const match = matches.length > 1
+        ? matches.find(record => record.initial.toLocaleLowerCase() === initialInput.value.trim().charAt(0).toLocaleLowerCase())
+        : matches[0];
+      if (!match) {
+        showError(matches.length ? "We couldn't match that initial. Please check it and try again." : "No score was found for that last name. Please check the spelling and try again.");
+        return;
+      }
+      result.innerHTML = `<span class="result-name">${escapeHtml(match.surname)}${match.initial ? ` ${match.initial}.` : ""}</span><span class="score">${match.score}</span>`;
+    });
+
+    function showError(message) {
+      result.className = "message error";
+      result.textContent = message;
+    }
+    function escapeHtml(value) {
+      return value.replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+    }
+  </script>
+</body>
+</html>
